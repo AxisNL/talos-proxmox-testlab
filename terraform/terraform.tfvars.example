@@ -1,0 +1,4 @@
+pm_api_url          = "https://x:8006/api2/json"
+pm_api_token_id     = "root@pam!terraform"
+pm_api_token_secret = "x"
+pm_host             = "host"
