@@ -212,7 +212,8 @@ Create an auth file [source](https://longhorn.io/docs/1.7.0/deploy/accessing-the
     USER=user; PASSWORD=password; echo "${USER}:$(openssl passwd -stdin -apr1 <<< ${PASSWORD})" >> auth
     kubectl -n longhorn-system create secret generic basic-auth --from-file=auth
 
-Create a file called `longhorn-ingress.yml`:
+Create a file called `longhorn-ingress.yml` (almost default from the longhorn doc, but with the added
+ingressClassName)
 
     apiVersion: networking.k8s.io/v1
     kind: Ingress
@@ -231,6 +232,7 @@ Create a file called `longhorn-ingress.yml`:
         # custom max body size for file uploading like backing image uploading
         nginx.ingress.kubernetes.io/proxy-body-size: 10000m
     spec:
+      ingressClassName: nginx
       rules:
       - http:
           paths:
