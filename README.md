@@ -196,7 +196,18 @@ Watch stuff happen:
 
     watch kubectl --namespace longhorn-system get pods
 
-Now let's create the ingress. Create an auth file [source](https://longhorn.io/docs/1.7.0/deploy/accessing-the-ui/longhorn-ingress/)
+
+## Ingress-nginx controller (general)
+
+
+Now let's create the ingress. First, we need an ingress controller
+
+    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.2/deploy/static/provider/cloud/deploy.yaml
+
+## Ingress for Longhorn
+
+
+Create an auth file [source](https://longhorn.io/docs/1.7.0/deploy/accessing-the-ui/longhorn-ingress/)
 
     USER=user; PASSWORD=password; echo "${USER}:$(openssl passwd -stdin -apr1 <<< ${PASSWORD})" >> auth
     kubectl -n longhorn-system create secret generic basic-auth --from-file=auth
