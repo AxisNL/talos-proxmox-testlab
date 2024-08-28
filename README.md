@@ -1,4 +1,4 @@
-# kube-terraform
+# talos-proxmox-testlab
 
 ## Introduction
 
@@ -196,10 +196,43 @@ Watch stuff happen:
 
     watch kubectl --namespace longhorn-system get pods
 
-Create an auth file: https://longhorn.io/docs/1.7.0/deploy/accessing-the-ui/longhorn-ingress/
-
+Now let's create the ingress. Create an auth file [source](https://longhorn.io/docs/1.7.0/deploy/accessing-the-ui/longhorn-ingress/)
 
     USER=user; PASSWORD=password; echo "${USER}:$(openssl passwd -stdin -apr1 <<< ${PASSWORD})" >> auth
     kubectl -n longhorn-system create secret generic basic-auth --from-file=auth
 
-talosctl --nodes ${TALOS01IP} --endpoints ${TALOS01IP} --talosconfig=./talosconfig dmesg
+Create a file called `longhorn-ingress.yml`:
+
+    apiVersion: networking.k8s.io/v1
+    kind: Ingress
+    metadata:
+      name: longhorn-ingress
+      namespace: longhorn-system
+      annotations:
+        # type of authentication
+        nginx.ingress.kubernetes.io/auth-type: basic
+        # prevent the controller from redirecting (308) to HTTPS
+        nginx.ingress.kubernetes.io/ssl-redirect: 'false'
+        # name of the secret that contains the user/password definitions
+        nginx.ingress.kubernetes.io/auth-secret: basic-auth
+        # message to display with an appropriate context why the authentication is required
+        nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required '
+        # custom max body size for file uploading like backing image uploading
+        nginx.ingress.kubernetes.io/proxy-body-size: 10000m
+    spec:
+      rules:
+      - http:
+          paths:
+          - pathType: Prefix
+            path: "/"
+            backend:
+              service:
+                name: longhorn-frontend
+                port:
+                  number: 80
+
+and apply it:
+
+    kubectl -n longhorn-system apply -f longhorn-ingress.yml
+
+
