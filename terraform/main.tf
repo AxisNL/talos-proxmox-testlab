@@ -36,7 +36,7 @@ resource "proxmox_vm_qemu" "talos-01" {
     ide {
       ide2 {
         cdrom {
-          iso = "local:iso/talos-metal-amd64.iso"
+          iso = "local:iso/talos-metal-amd64-with-agent.iso"
         }
       }
     }
@@ -87,7 +87,7 @@ resource "proxmox_vm_qemu" "talos-02" {
     ide {
       ide2 {
         cdrom {
-          iso = "local:iso/talos-metal-amd64.iso"
+          iso = "local:iso/talos-metal-amd64-with-agent.iso"
         }
       }
     }
@@ -138,7 +138,7 @@ resource "proxmox_vm_qemu" "talos-03" {
     ide {
       ide2 {
         cdrom {
-          iso = "local:iso/talos-metal-amd64.iso"
+          iso = "local:iso/talos-metal-amd64-with-agent.iso"
         }
       }
     }
@@ -189,7 +189,7 @@ resource "proxmox_vm_qemu" "talos-04" {
     ide {
       ide2 {
         cdrom {
-          iso = "local:iso/talos-metal-amd64.iso"
+          iso = "local:iso/talos-metal-amd64-with-agent.iso"
         }
       }
     }
