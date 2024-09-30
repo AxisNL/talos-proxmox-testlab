@@ -90,8 +90,8 @@ Got to the 'talos' directory in this repo. Let's create a new cluster called tes
 
 Let's patch this files with the correct custom image we did before:
 
-    talosctl machineconfig patch controlplane.yaml --patch '[{"op": "replace", "path": "/machine/install/image", "value": "factory.talos.dev/installer/c527b6b20fb22847304656677e9bd4c4055dfcce95f3385da5db80e35f5fa1dc:v1.7.6"}]' -o controlplane.yaml
-    talosctl machineconfig patch worker.yaml --patch '[{"op": "replace", "path": "/machine/install/image", "value": "factory.talos.dev/installer/c527b6b20fb22847304656677e9bd4c4055dfcce95f3385da5db80e35f5fa1dc:v1.7.6"}]' -o worker.yaml
+    talosctl machineconfig patch controlplane.yaml --patch '[{"op": "replace", "path": "/machine/install/image", "value": "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.7.6"}]' -o controlplane.yaml
+    talosctl machineconfig patch worker.yaml --patch '[{"op": "replace", "path": "/machine/install/image", "value": "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.7.6"}]' -o worker.yaml
 
 Let's create machine-specific configs:
 
@@ -116,7 +116,7 @@ Get the kubernetes config to be used by kubectl:
 
 After a while kubernetes should be ready:
 
-    $ kubectl get nodes
+    $ watch kubectl get nodes
     NAME       STATUS   ROLES           AGE     VERSION
     talos-01   Ready    control-plane   5m13s   v1.30.3
 
@@ -137,112 +137,30 @@ Feel free to start over with
     terraform destroy
 
 
-## Longhorn
+## Rook-ceph
 
 
-patch the controlplane.yaml file to include the longhorn-system namespace. Create the following file longhorn-namespace.yaml:
-
-    cluster:
-        inlineManifests:
-          - name: namespace-longhorn-system
-            contents: |-
-              apiVersion: v1
-              kind: Namespace
-              metadata:
-                 name: longhorn-system
-
-And apply it:
-
-    talosctl machineconfig patch talos-01.yaml --patch @longhorn-namespace.yaml -o talos-01.yaml
-    talosctl apply-config --nodes ${TALOS01IP} --endpoints ${TALOS01IP} --talosconfig=./talosconfig -f talos-01.yaml
-
-Let's enable the longhorn storage mounts. Create a file longhorn-mount.yaml
-
-    - op: add
-      path: /machine/kubelet/extraMounts
-      value:
-        - destination: /var/lib/longhorn
-          type: bind
-          source: /var/lib/longhorn
-          options:
-            - bind
-            - rshared
-            - rw
-
-And create a new machineconfig for the workers:
-
-    talosctl machineconfig patch talos-02.yaml --patch @longhorn-mount.yaml -o talos-02.yaml
-    talosctl apply-config --nodes ${TALOS02IP} --endpoints ${TALOS01IP} --talosconfig=./talosconfig -f talos-02.yaml
-    talosctl machineconfig patch talos-03.yaml --patch @longhorn-mount.yaml -o talos-03.yaml
-    talosctl apply-config --nodes ${TALOS03IP} --endpoints ${TALOS01IP} --talosconfig=./talosconfig -f talos-03.yaml
-    talosctl machineconfig patch talos-04.yaml --patch @longhorn-mount.yaml -o talos-04.yaml
-    talosctl apply-config --nodes ${TALOS04IP} --endpoints ${TALOS01IP} --talosconfig=./talosconfig -f talos-04.yaml
 
 Apply the pod security policy
 
-    talosctl machineconfig patch talos-01.yaml --patch '[{"op": "add", "path": "/cluster/apiServer/admissionControl/0/configuration/exemptions/namespaces/-", "value": "longhorn-system"}]' -o talos-01.yaml
+    talosctl machineconfig patch talos-01.yaml --patch '[{"op": "add", "path": "/cluster/apiServer/admissionControl/0/configuration/exemptions/namespaces/-", "value": "rook-ceph"}]' -o talos-01.yaml
     talosctl apply-config --nodes ${TALOS01IP} --endpoints ${TALOS01IP} --talosconfig=./talosconfig -f talos-01.yaml
 
-And deploy longhorn:
+Install ceph-rook
 
+    git clone --single-branch --branch v1.15.0 https://github.com/rook/rook.git
+    cd rook/deploy/examples
+    kubectl create -f crds.yaml -f common.yaml -f operator.yaml
+    kubectl create -f cluster.yaml
+    kubectl create -f toolbox.yaml
 
-    kubectl apply -f https://raw.githubusercontent.com/longhorn/longhorn/v1.7.0/deploy/longhorn.yaml
+Wait
 
+    watch kubectl -n rook-ceph get pod
 
-Watch stuff happen:
+Connect to the toolbox
 
-    watch kubectl --namespace longhorn-system get pods
+    kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
+    ceph status
 
-
-## Ingress-nginx controller (general)
-
-
-Now let's create the ingress. First, we need an ingress controller
-
-    kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.2/deploy/static/provider/cloud/deploy.yaml
-
-## Ingress for Longhorn
-
-
-Create an auth file [source](https://longhorn.io/docs/1.7.0/deploy/accessing-the-ui/longhorn-ingress/)
-
-    USER=user; PASSWORD=password; echo "${USER}:$(openssl passwd -stdin -apr1 <<< ${PASSWORD})" >> auth
-    kubectl -n longhorn-system create secret generic basic-auth --from-file=auth
-
-Create a file called `longhorn-ingress.yml` (almost default from the longhorn doc, but with the added
-ingressClassName)
-
-    apiVersion: networking.k8s.io/v1
-    kind: Ingress
-    metadata:
-      name: longhorn-ingress
-      namespace: longhorn-system
-      annotations:
-        # type of authentication
-        nginx.ingress.kubernetes.io/auth-type: basic
-        # prevent the controller from redirecting (308) to HTTPS
-        nginx.ingress.kubernetes.io/ssl-redirect: 'false'
-        # name of the secret that contains the user/password definitions
-        nginx.ingress.kubernetes.io/auth-secret: basic-auth
-        # message to display with an appropriate context why the authentication is required
-        nginx.ingress.kubernetes.io/auth-realm: 'Authentication Required '
-        # custom max body size for file uploading like backing image uploading
-        nginx.ingress.kubernetes.io/proxy-body-size: 10000m
-    spec:
-      ingressClassName: nginx
-      rules:
-      - http:
-          paths:
-          - pathType: Prefix
-            path: "/"
-            backend:
-              service:
-                name: longhorn-frontend
-                port:
-                  number: 80
-
-and apply it:
-
-    kubectl -n longhorn-system apply -f longhorn-ingress.yml
-
-
+An
