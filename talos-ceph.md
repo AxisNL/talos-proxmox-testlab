@@ -161,6 +161,24 @@ Wait
 Connect to the toolbox
 
     kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
-    ceph status
+    watch ceph status
 
-An
+After a while you should see a healthy cluster:
+
+    bash-5.1$ ceph status 
+      cluster:
+        id:     76972aae-77bf-48b3-9595-c27dc5e94d98
+        health: HEALTH_OK
+     
+      services:
+        mon: 3 daemons, quorum a,b,c (age 104s)
+        mgr: a(active, since 43s), standbys: b
+        osd: 3 osds: 3 up (since 50s), 3 in (since 70s)
+     
+      data:
+        pools:   1 pools, 1 pgs
+        objects: 2 objects, 577 KiB
+        usage:   82 MiB used, 180 GiB / 180 GiB avail
+        pgs:     1 active+clean
+     
+The next steps are actually doing something with this storage, but I haven't gotten around to that yet!
