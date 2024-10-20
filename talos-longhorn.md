@@ -55,7 +55,7 @@ Put it in the proxmox ISO store with the name local/iso:talos-metal-amd64.iso (t
 
 ## Terraform
 
-Go to the terraform folder, change the credentials, and do a `terraform init` and `terraform apply`.
+Go to the terraform-4node folder, copy the terraform.tfvars.example to terraform.tfvars, change the credentials, and do a `terraform init` and `terraform apply`.
 
 It should show output like this:
 

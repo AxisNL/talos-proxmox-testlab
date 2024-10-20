@@ -2,8 +2,8 @@
 
 ## Introduction
 
-The goal of this guide is setting up a Talos testlab with 4 vm's (one control node and 3 workers) scripted using
-terraform and proxmox, with bash scripts and repeatable commands.
+The goal of this guide is setting up a Talos testlab with a single node, combining control and worker role, scripted 
+using terraform and proxmox, with bash scripts and repeatable commands.
 
 ## Client preparations
 
@@ -52,7 +52,7 @@ Put it in the proxmox ISO store with the name local/iso:talos-metal-amd64.iso (t
 
 ## Terraform
 
-Go to the terraform-4node folder, copy the terraform.tfvars.example to terraform.tfvars, change the credentials, and do a `terraform init` and `terraform apply`.
+Go to the terraform-1node folder, copy the terraform.tfvars.example to terraform.tfvars, change the credentials, and do a `terraform init` and `terraform apply`.
 
 It should show output like this:
 
@@ -60,22 +60,10 @@ It should show output like this:
     proxmox_ip_address_talos_01 = [
       "${TALOS01IP}",
     ]
-    proxmox_ip_address_talos_02 = [
-      "192.168.128.224",
-    ]
-    proxmox_ip_address_talos_03 = [
-      "192.168.128.220",
-    ]
-    proxmox_ip_address_talos_04 = [
-      "192.168.128.223",
-    ]
 
 Fill some environment variables to make the rest of the commands easier:
 
     export TALOS01IP=$(terraform output -json | jq -r .proxmox_ip_address_talos_01.value[0])
-    export TALOS02IP=$(terraform output -json | jq -r .proxmox_ip_address_talos_02.value[0])
-    export TALOS03IP=$(terraform output -json | jq -r .proxmox_ip_address_talos_03.value[0])
-    export TALOS04IP=$(terraform output -json | jq -r .proxmox_ip_address_talos_04.value[0])
     export | grep TALOS
 
 ## Creating a Talos config
@@ -91,15 +79,14 @@ Got to the 'talos' directory in this repo. Let's create a new cluster called tes
 Let's patch this files with the correct custom image we did before:
 
     talosctl machineconfig patch controlplane.yaml --patch '[{"op": "replace", "path": "/machine/install/image", "value": "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.7.6"}]' -o controlplane.yaml
-    talosctl machineconfig patch worker.yaml --patch '[{"op": "replace", "path": "/machine/install/image", "value": "factory.talos.dev/installer/ce4c980550dd2ab1b17bbf2b08801c7eb59418eafe8f279833297925d67c7515:v1.7.6"}]' -o worker.yaml
 
-Let's create machine-specific configs:
+remove the taint:
 
-    talosctl machineconfig patch controlplane.yaml --patch '[{"op": "add", "path": "/machine/network/hostname", "value": "talos-01"}]' -o talos-01.yaml
-    talosctl machineconfig patch worker.yaml --patch '[{"op": "add", "path": "/machine/network/hostname", "value": "talos-02"}]' -o talos-02.yaml
-    talosctl machineconfig patch worker.yaml --patch '[{"op": "add", "path": "/machine/network/hostname", "value": "talos-03"}]' -o talos-03.yaml
-    talosctl machineconfig patch worker.yaml --patch '[{"op": "add", "path": "/machine/network/hostname", "value": "talos-04"}]' -o talos-04.yaml
+    talosctl machineconfig patch controlplane.yaml --patch '[{"op": "replace", "path": "/cluster/allowSchedulingOnControlPlanes", "value": true}]' -o singlenode.yaml
 
+And add the name:
+
+    talosctl machineconfig patch singlenode.yaml --patch '[{"op": "add", "path": "/machine/network/hostname", "value": "talos-01"}]' -o talos-01.yaml
 
 Add the control node:
 
@@ -120,12 +107,6 @@ After a while kubernetes should be ready:
     NAME       STATUS   ROLES           AGE     VERSION
     talos-01   Ready    control-plane   5m13s   v1.30.3
 
-Now add the worker nodes:
-
-    talosctl apply-config --insecure --nodes ${TALOS02IP} --file talos-02.yaml
-    talosctl apply-config --insecure --nodes ${TALOS03IP} --file talos-03.yaml
-    talosctl apply-config --insecure --nodes ${TALOS04IP} --file talos-04.yaml
-
 And watch for the nodes to change state:
 
     kubectl get nodes --watch
@@ -137,48 +118,19 @@ Feel free to start over with
     terraform destroy
 
 
-## Rook-ceph
+All the stuff below doesn't work yet!
 
 
+Now add the extramounts stuff
 
-Apply the pod security policy
+    extraMounts:
+      - destination: /var/mnt
+        type: bind
+        source: /var/mnt
+        options:
+          - bind
+          - rshared
+          - rw
 
-    talosctl machineconfig patch talos-01.yaml --patch '[{"op": "add", "path": "/cluster/apiServer/admissionControl/0/configuration/exemptions/namespaces/-", "value": "rook-ceph"}]' -o talos-01.yaml
-    talosctl apply-config --nodes ${TALOS01IP} --endpoints ${TALOS01IP} --talosconfig=./talosconfig -f talos-01.yaml
+https://www.talos.dev/v1.8/kubernetes-guides/configuration/local-storage/
 
-Install ceph-rook
-
-    git clone --single-branch --branch v1.15.0 https://github.com/rook/rook.git
-    cd rook/deploy/examples
-    kubectl create -f crds.yaml -f common.yaml -f operator.yaml
-    kubectl create -f cluster.yaml
-    kubectl create -f toolbox.yaml
-
-Wait
-
-    watch kubectl -n rook-ceph get pod
-
-Connect to the toolbox
-
-    kubectl -n rook-ceph exec -it deploy/rook-ceph-tools -- bash
-    watch ceph status
-
-After a while you should see a healthy cluster:
-
-    bash-5.1$ ceph status 
-      cluster:
-        id:     76972aae-77bf-48b3-9595-c27dc5e94d98
-        health: HEALTH_OK
-     
-      services:
-        mon: 3 daemons, quorum a,b,c (age 104s)
-        mgr: a(active, since 43s), standbys: b
-        osd: 3 osds: 3 up (since 50s), 3 in (since 70s)
-     
-      data:
-        pools:   1 pools, 1 pgs
-        objects: 2 objects, 577 KiB
-        usage:   82 MiB used, 180 GiB / 180 GiB avail
-        pgs:     1 active+clean
-     
-The next steps are actually doing something with this storage, but I haven't gotten around to that yet!
